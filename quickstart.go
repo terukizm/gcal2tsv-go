@@ -21,6 +21,27 @@ import (
 const FORMAT_YYMMDD = "2006-01-02"
 const FORMAT_YYMMDD_HHMISS = "2006-01-02 15:04:05"
 
+type WorkLog struct {
+	start   time.Time
+	end     time.Time
+	summary string
+}
+
+func newWorkLog(start time.Time, end time.Time, summary string) *WorkLog {
+	w := new(WorkLog)
+	w.start = start
+	w.end = end
+	w.summary = summary
+	return w
+}
+
+func (w WorkLog) toString() string {
+	startTime := w.start.Format(FORMAT_YYMMDD_HHMISS)
+	endTime := w.end.Format(FORMAT_YYMMDD_HHMISS)
+	workHour := w.end.Sub(w.start).Hours()
+	return fmt.Sprintf("%s - %s    %s    (%.2f h)\n", startTime, endTime, w.summary, workHour)
+}
+
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
 func getClient(ctx context.Context, config *oauth2.Config) *http.Client {
@@ -93,30 +114,31 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
-// dump2tsv
+// Google Calendar APIから取得した情報を、TSV形式で出力
 func dump2tsv(events *calendar.Events) {
 	if len(events.Items) < 1 {
 		fmt.Printf("No upcoming events found.\n")
-	} else {
-		for _, i := range events.Items {
-			// 「終日」の予定は、TSV出力の対象外とする
-			if i.Start.DateTime == "" {
-				continue
-			}
+		return
+	}
 
-			summary := i.Summary
-			st, _ := time.Parse(time.RFC3339, i.Start.DateTime)
-			ed, _ := time.Parse(time.RFC3339, i.End.DateTime)
-			startTime := st.Format(FORMAT_YYMMDD_HHMISS)
-			endTime := ed.Format(FORMAT_YYMMDD_HHMISS)
-
-			fmt.Printf("%s (%s - %s)\n", summary, startTime, endTime)
+	for _, i := range events.Items {
+		// 「終日」になっているカレンダーの予定は、TSV出力の対象外
+		if i.Start.DateTime == "" {
+			continue
 		}
+
+		st, _ := time.Parse(time.RFC3339, i.Start.DateTime)
+		ed, _ := time.Parse(time.RFC3339, i.End.DateTime)
+		worklog := newWorkLog(st, ed, i.Summary)
+
+		fmt.Printf(worklog.toString())
 	}
 }
 
-// @see https://developers.google.com/google-apps//alendar/quickstart/go
+// @see https://developers.google.com/google-apps/calendar/quickstart/go
 func main() {
+	startDate := "2017-08-01"
+	endDate := "2017-08-31"
 
 	client_secret := "./client_secret.json"
 	calender_id := "uik1nf72sm3t6vtmnu75k1hni8@group.calendar.google.com"
@@ -137,24 +159,24 @@ func main() {
 
 	ctx := context.Background()
 	client := getClient(ctx, config)
-
 	srv, err := calendar.New(client)
 	if err != nil {
 		log.Fatalf("Unable to retrieve calendar Client %v", err)
 	}
 
-	st, _ := time.Parse(FORMAT_YYMMDD, "2017-08-01")
-	ed, _ := time.Parse(FORMAT_YYMMDD, "2017-08-31")
-	fmt.Printf("start=%v, end=%v", st, ed)
+	fmt.Printf("start=%s, end=%s \n", startDate, endDate)
+	st, _ := time.Parse(FORMAT_YYMMDD, startDate)
+	ed, _ := time.Parse(FORMAT_YYMMDD, endDate)
+
 	events, err := srv.Events.List(calender_id).
 		TimeMin(st.Format(time.RFC3339)).
 		TimeMax(ed.Format(time.RFC3339)).
 		SingleEvents(true).
-		OrderBy("startTime").Do()
+		OrderBy("startTime").
+		Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
 	}
 
-	fmt.Println("Upcoming events:")
 	dump2tsv(events)
 }
