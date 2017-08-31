@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -12,6 +13,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -20,6 +24,8 @@ import (
 
 const FORMAT_YYMMDD = "2006-01-02"
 const FORMAT_YYMMDD_HHMISS = "2006-01-02 15:04:05"
+
+////////////////////////////////////////////////////////////////////////////////
 
 type WorkLog struct {
 	start   time.Time
@@ -35,12 +41,14 @@ func newWorkLog(start time.Time, end time.Time, summary string) *WorkLog {
 	return w
 }
 
-func (w WorkLog) toString() string {
+func (w WorkLog) toRecord() []string {
 	startTime := w.start.Format(FORMAT_YYMMDD_HHMISS)
 	endTime := w.end.Format(FORMAT_YYMMDD_HHMISS)
 	workHour := w.end.Sub(w.start).Hours()
-	return fmt.Sprintf("%s - %s    %s    (%.2f h)\n", startTime, endTime, w.summary, workHour)
+	return []string{startTime, endTime, w.summary, fmt.Sprint(workHour)}
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
@@ -114,15 +122,29 @@ func saveToken(file string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
-// Google Calendar APIから取得した情報を、TSV形式で出力
-func dump2tsv(events *calendar.Events) {
+////////////////////////////////////////////////////////////////////////////////
+
+// Google Calendar APIから取得した情報を、TSV形式(SJIS)で書き出し
+func dump2tsv(events *calendar.Events, outfile string) {
 	if len(events.Items) < 1 {
 		fmt.Printf("No upcoming events found.\n")
 		return
 	}
 
+	file, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		log.Fatalf("Unable to open outfile: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(transform.NewWriter(file, japanese.ShiftJIS.NewEncoder()))
+	writer.UseCRLF = true
+	writer.Comma = '\t'
+
+        header := []string {"開始時刻", "終了時刻", "作業概要", "作業時間"}
+	writer.Write(header)
 	for _, i := range events.Items {
-		// 「終日」になっているカレンダーの予定は、TSV出力の対象外
+		// 「終日」になっているカレンダーの予定は、出力対象外
 		if i.Start.DateTime == "" {
 			continue
 		}
@@ -131,20 +153,30 @@ func dump2tsv(events *calendar.Events) {
 		ed, _ := time.Parse(time.RFC3339, i.End.DateTime)
 		worklog := newWorkLog(st, ed, i.Summary)
 
-		fmt.Printf(worklog.toString())
+		record := worklog.toRecord()
+
+		fmt.Printf("%v\n", record)
+		writer.Write(worklog.toRecord())
 	}
+
+	writer.Flush()
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 // @see https://developers.google.com/google-apps/calendar/quickstart/go
 func main() {
 	startDate := "2017-08-01"
 	endDate := "2017-08-31"
 
+	outfile := "./worklog.tsv"
+
 	client_secret := "./client_secret.json"
 	calender_id := "uik1nf72sm3t6vtmnu75k1hni8@group.calendar.google.com"
+
 	scope := calendar.CalendarReadonlyScope
 
-	// credential(client_secret)読み込み
+	// credential(client_secret.json)読み込み
 	b, err := ioutil.ReadFile(client_secret)
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -178,5 +210,5 @@ func main() {
 		log.Fatalf("Unable to retrieve next ten of the user's events. %v", err)
 	}
 
-	dump2tsv(events)
+	dump2tsv(events, outfile)
 }
