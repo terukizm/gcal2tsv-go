@@ -1,0 +1,11 @@
+[date]
+start= "2017-08-01"
+end= "2017-08-31"
+
+[output]
+filename = "./worklog.tsv"
+type = "tsv"
+
+[gcal]
+client_secret := "./client_secret.json"
+calender_id := "uik1nf72sm3t6vtmnu75k1hni8@group.calendar.google.com"

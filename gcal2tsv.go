@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 
@@ -26,6 +28,27 @@ const FORMAT_YYMMDD = "2006-01-02"
 const FORMAT_YYMMDD_HHMISS = "2006-01-02 15:04:05"
 
 ////////////////////////////////////////////////////////////////////////////////
+
+type Config struct {
+	Date   DateConfig
+	Output OutputConfig
+	GCal   GCalConfig
+}
+
+type DateConfig struct {
+	Start string
+	End   string
+}
+
+type OutputConfig struct {
+	Filename string
+	Type     string
+}
+
+type GCalConfig struct {
+	ClientSecret string `toml:"client_secret"`
+	CalendarId   string `toml:"calender_id"`
+}
 
 type WorkLog struct {
 	start   time.Time
@@ -141,7 +164,7 @@ func dump2tsv(events *calendar.Events, outfile string) {
 	writer.UseCRLF = true
 	writer.Comma = '\t'
 
-        header := []string {"開始時刻", "終了時刻", "作業概要", "作業時間"}
+	header := []string{"開始時刻", "終了時刻", "作業概要", "作業時間"}
 	writer.Write(header)
 	for _, i := range events.Items {
 		// 「終日」になっているカレンダーの予定は、出力対象外
@@ -166,14 +189,21 @@ func dump2tsv(events *calendar.Events, outfile string) {
 
 // @see https://developers.google.com/google-apps/calendar/quickstart/go
 func main() {
-	startDate := "2017-08-01"
-	endDate := "2017-08-31"
+	// config.tomlから各種情報を読み込み
+	var conf Config
+	_, err := toml.DecodeFile("./config.toml", &conf)
+	if err != nil {
+		log.Fatalf("Unable to read config.toml: %v", err)
+		panic(err)
+	}
 
-	outfile := "./worklog.tsv"
+	startDate := conf.Date.Start
+	endDate := conf.Date.End
 
-	client_secret := "./client_secret.json"
-	calender_id := "uik1nf72sm3t6vtmnu75k1hni8@group.calendar.google.com"
+	outfile := conf.Output.Filename
 
+	client_secret := conf.GCal.ClientSecret
+	calender_id := conf.GCal.CalendarId
 	scope := calendar.CalendarReadonlyScope
 
 	// credential(client_secret.json)読み込み
@@ -196,10 +226,10 @@ func main() {
 		log.Fatalf("Unable to retrieve calendar Client %v", err)
 	}
 
+	// 開始日、終了日を指定してGoogle Calendarから取得
 	fmt.Printf("start=%s, end=%s \n", startDate, endDate)
 	st, _ := time.Parse(FORMAT_YYMMDD, startDate)
 	ed, _ := time.Parse(FORMAT_YYMMDD, endDate)
-
 	events, err := srv.Events.List(calender_id).
 		TimeMin(st.Format(time.RFC3339)).
 		TimeMax(ed.Format(time.RFC3339)).
