@@ -72,6 +72,7 @@ func (w WorkLog) toRecord() []string {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// @see https://developers.google.com/google-apps/calendar/quickstart/go
 
 // getClient uses a Context and Config to retrieve a Token
 // then generate a Client. It returns the generated Client.
@@ -187,7 +188,6 @@ func dump2tsv(events *calendar.Events, outfile string) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// @see https://developers.google.com/google-apps/calendar/quickstart/go
 func main() {
 	// config.tomlから各種情報を読み込み
 	var conf Config
@@ -199,14 +199,12 @@ func main() {
 
 	startDate := conf.Date.Start
 	endDate := conf.Date.End
-
 	outfile := conf.Output.Filename
-
 	client_secret := conf.GCal.ClientSecret
 	calender_id := conf.GCal.CalendarId
 	scope := calendar.CalendarReadonlyScope
 
-	// credential(client_secret.json)読み込み
+	// Client Secrets(client_secret.json)読み込み
 	b, err := ioutil.ReadFile(client_secret)
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
