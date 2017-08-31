@@ -228,6 +228,7 @@ func main() {
 	fmt.Printf("start=%s, end=%s \n", startDate, endDate)
 	st, _ := time.Parse(FORMAT_YYMMDD, startDate)
 	ed, _ := time.Parse(FORMAT_YYMMDD, endDate)
+	ed = ed.AddDate(0, 0, 1)
 	events, err := srv.Events.List(calender_id).
 		TimeMin(st.Format(time.RFC3339)).
 		TimeMax(ed.Format(time.RFC3339)).
